@@ -1,0 +1,99 @@
+import pexpect
+import logging
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+def ssh_login(ip, username, password, enable_password):
+    session = pexpect.spawn(f'ssh {username}@{ip}', encoding='utf-8', timeout=20)
+
+    try:
+        result = session.expect(['Password:', pexpect.TIMEOUT, pexpect.EOF])
+        if result != 0:
+            raise Exception(f'Failed to create session for: {ip}')
+
+        session.sendline(password)
+        result = session.expect(['>', pexpect.TIMEOUT, pexpect.EOF])
+        if result != 0:
+            raise Exception(f'Failed entering password for: {ip}')
+
+        session.sendline('enable')
+        result = session.expect(['Password:', pexpect.TIMEOUT, pexpect.EOF])
+        if result != 0:
+            raise Exception(f'Failed entering enable mode for: {ip}')
+
+        session.sendline(password_enable)
+        result = session.expect(['#', pexpect.TIMEOUT, pexpect.EOF])
+        if result != 0:
+            raise Exception(f'Failed entering enable mode after sending password for: {ip}')
+
+        return session
+
+    except Exception as e:
+        logger.error(e)
+        exit()
+
+def configure_device(session):
+    try:
+        # Enter global configuration mode
+        session.sendline('configure terminal')
+        result = session.expect([r'.\(config\)#', pexpect.TIMEOUT, pexpect.EOF])
+        if result != 0:
+            raise Exception('Failed entering config mode')
+
+        # Set hostname
+        session.sendline('hostname R1')
+        result = session.expect([r'R1\(config\)#', pexpect.TIMEOUT, pexpect.EOF])
+        if result != 0:
+            raise Exception('Failed setting hostname')
+
+        # Configure loopback interface
+        session.sendline('interface loopback0')
+        result = session.expect([r'R1\(config-if\)#', pexpect.TIMEOUT, pexpect.EOF])
+        if result != 0:
+            raise Exception('Failed entering loopback interface mode')
+
+        session.sendline('ip address 1.1.1.1 255.255.255.255')  # Adjust IP address as needed
+        session.sendline('exit')
+
+        # Configure another interface (e.g., GigabitEthernet0/0)
+        session.sendline('interface GigabitEthernet0/0')
+        result = session.expect([r'R1\(config-if\)#', pexpect.TIMEOUT, pexpect.EOF])
+        if result != 0:
+            raise Exception('Failed entering GigabitEthernet0/0 interface mode')
+
+        session.sendline('ip address 192.168.1.1 255.255.255.0')  # Adjust IP address as needed
+        session.sendline('exit')
+
+        # Configure OSPF (you can replace this with EIGRP or RIP if needed)
+        session.sendline('router ospf 1')
+        result = session.expect([r'R1\(config-router\)#', pexpect.TIMEOUT, pexpect.EOF])
+        if result != 0:
+            raise Exception('Failed entering OSPF router mode')
+
+        session.sendline('network 1.1.1.1 0.0.0.0 area 0')  # Adjust network and area as needed
+        session.sendline('network 192.168.1.1 0.0.0.0 area 0')  # Adjust network and area as needed
+        session.sendline('exit')
+
+        session.sendline('exit')  # Exit global configuration mode
+
+    except Exception as e:
+        logger.error(e)
+        exit()
+
+def main():
+    ip_address = '192.168.56.101'
+    username = 'prne'
+    password = 'cisco123!'
+    password_enable = 'class123!'
+
+    session = ssh_login(ip_address, username, password, password_enable)
+    configure_device(session)
+
+    # Display success message
+    logger.info(f'Successfully connected to {ip_address} as {username}')
+    session.close()
+
+if __name__ == "__main__":
+    main()
